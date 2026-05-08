@@ -5,7 +5,8 @@ import java.util.List;
 public record ParameterMetadata(String name,
                                 String type,
                                 String genericType,
-                                List<AnnotationMetadata> annotations)
+                                List<AnnotationMetadata> annotations,
+                                JavadocMetadata javadoc)
         implements Comparable<ParameterMetadata> {
     public ParameterMetadata {
         annotations = List.copyOf(annotations);

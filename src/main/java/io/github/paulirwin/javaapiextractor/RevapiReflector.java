@@ -10,6 +10,7 @@ import org.revapi.java.JavaApiAnalyzer;
 import org.revapi.java.JavaArchiveAnalyzer;
 
 import javax.lang.model.element.AnnotationMirror;
+import javax.lang.model.element.Element;
 import javax.lang.model.element.ElementKind;
 import javax.lang.model.element.ExecutableElement;
 import javax.lang.model.element.Modifier;
@@ -29,9 +30,13 @@ import javax.lang.model.util.Elements;
 import javax.lang.model.util.Types;
 import java.util.ArrayList;
 import java.util.Enumeration;
+import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 
@@ -239,7 +244,8 @@ public class RevapiReflector {
                 extractConstructors(type, env),
                 extractMethods(type, env),
                 extractEnumConstants(type, env),
-                extractFields(type, env)
+                extractFields(type, env),
+                extractJavadoc(type, env)
         );
     }
 
@@ -251,6 +257,67 @@ public class RevapiReflector {
             case INTERFACE -> "interface";
             default -> "class";
         };
+    }
+
+    private static JavadocMetadata extractJavadoc(Element element, Env env) {
+        String rawDoc = env.elements().getDocComment(element);
+        if (rawDoc == null || rawDoc.isBlank()) {
+            return null;
+        }
+        String cleanedDoc = cleanJavadoc(rawDoc);
+        String description = extractDescription(cleanedDoc);
+        Map<String, String> tags = extractTags(cleanedDoc);
+        if (description.isBlank() && tags.isEmpty()) {
+            return null;
+        }
+        return new JavadocMetadata(
+                description.isBlank() ? null : description,
+                tags.isEmpty() ? null : tags,
+                rawDoc
+        );
+    }
+
+    private static String cleanJavadoc(String rawDoc) {
+        var lines = rawDoc.split("\n");
+        var cleaned = new ArrayList<String>();
+        for (var line : lines) {
+            line = line.replaceAll("^\\s*\\*", "").trim();
+            if (!line.isEmpty() || !cleaned.isEmpty()) {
+                cleaned.add(line);
+            }
+        }
+        while (!cleaned.isEmpty() && cleaned.get(cleaned.size() - 1).isEmpty()) {
+            cleaned.remove(cleaned.size() - 1);
+        }
+        return String.join("\n", cleaned).trim();
+    }
+
+    private static String extractDescription(String cleanedDoc) {
+        int tagIndex = cleanedDoc.indexOf("@");
+        if (tagIndex == -1) {
+            return cleanedDoc;
+        }
+        return cleanedDoc.substring(0, tagIndex).trim();
+    }
+
+    private static Map<String, String> extractTags(String cleanedDoc) {
+        var tags = new HashMap<String, String>();
+        var tagPattern = Pattern.compile("@(\\w+)\\s+([^@]*)(?=@|$)", Pattern.DOTALL);
+        var matcher = tagPattern.matcher(cleanedDoc);
+        while (matcher.find()) {
+            String tagName = matcher.group(1);
+            String tagContent = matcher.group(2).trim();
+            if (!tagContent.isEmpty()) {
+                tagContent = tagContent.replaceAll("\\s+", " ");
+                String existing = tags.get(tagName);
+                if (existing != null) {
+                    tags.put(tagName, existing + " | " + tagContent);
+                } else {
+                    tags.put(tagName, tagContent);
+                }
+            }
+        }
+        return tags;
     }
 
     static List<ConstructorMetadata> extractConstructors(TypeElement type, Env env) {
@@ -288,11 +355,11 @@ public class RevapiReflector {
                 // emit the JVM-conventional this$0 and leave the others as javac gave them.
                 var injected = new ArrayList<ParameterMetadata>(params.size() + 1);
                 String synthName = env.stableParameterNames() ? "arg0" : "this$0";
-                injected.add(new ParameterMetadata(synthName, enclName, enclName, List.of()));
+                injected.add(new ParameterMetadata(synthName, enclName, enclName, List.of(), null));
                 if (env.stableParameterNames()) {
                     for (int i = 0; i < params.size(); i++) {
                         var p = params.get(i);
-                        injected.add(new ParameterMetadata("arg" + (i + 1), p.type(), p.genericType(), p.annotations()));
+                        injected.add(new ParameterMetadata("arg" + (i + 1), p.type(), p.genericType(), p.annotations(), p.javadoc()));
                     }
                 } else {
                     injected.addAll(params);
@@ -304,7 +371,8 @@ public class RevapiReflector {
                     ctorMods,
                     getThrowsTypes(ctor, env),
                     getAnnotations(ctor.getAnnotationMirrors(), env),
-                    ctor.isVarArgs()
+                    ctor.isVarArgs(),
+                    extractJavadoc(ctor, env)
             ));
         }
         result.sort(ConstructorMetadata::compareTo);
@@ -336,7 +404,8 @@ public class RevapiReflector {
                     getMethodTypeParameterNames(method.getTypeParameters(), env),
                     getThrowsTypes(method, env),
                     getAnnotations(method.getAnnotationMirrors(), env),
-                    method.isVarArgs()
+                    method.isVarArgs(),
+                    extractJavadoc(method, env)
             ));
         }
         result.sort(MethodMetadata::compareTo);
@@ -361,7 +430,8 @@ public class RevapiReflector {
                     sorted(getModifiers(field.getModifiers(), null)),
                     getAnnotations(field.getAnnotationMirrors(), env),
                     field.getModifiers().contains(Modifier.STATIC),
-                    constantValueOf(field)
+                    constantValueOf(field),
+                    extractJavadoc(field, env)
             ));
         }
         result.sort(FieldMetadata::compareTo);
@@ -386,7 +456,8 @@ public class RevapiReflector {
             // Enum constants are implicitly public — no isApiVisible filter needed.
             result.add(new EnumConstantMetadata(
                     constant.getSimpleName().toString(),
-                    getAnnotations(constant.getAnnotationMirrors(), env)));
+                    getAnnotations(constant.getAnnotationMirrors(), env),
+                    extractJavadoc(constant, env)));
         }
         return result;
     }
@@ -429,6 +500,8 @@ public class RevapiReflector {
     private static List<ParameterMetadata> buildParameters(ExecutableElement executable, Env env) {
         var params = executable.getParameters();
         var result = new ArrayList<ParameterMetadata>(params.size());
+        JavadocMetadata executableJavadoc = extractJavadoc(executable, env);
+        Map<String, String> paramDocs = extractParamDocsFromJavadoc(executableJavadoc);
         for (int i = 0; i < params.size(); i++) {
             var p = params.get(i);
             // In stable mode (used by `hash`), emit arg{i} so the digest doesn't shift
@@ -436,14 +509,41 @@ public class RevapiReflector {
             // use whatever name javac surfaced (real source name when available, else
             // its own arg{i} fallback).
             String name = env.stableParameterNames() ? "arg" + i : p.getSimpleName().toString();
+            JavadocMetadata paramJavadoc = null;
+            String paramDocText = paramDocs.get(name);
+            if (paramDocText != null && !paramDocText.isBlank()) {
+                paramJavadoc = new JavadocMetadata(paramDocText, Map.of(), null);
+            }
             result.add(new ParameterMetadata(
                     name,
                     typeNameOf(p.asType(), false, env),
                     typeNameOf(p.asType(), true, env),
-                    getAnnotations(p.getAnnotationMirrors(), env)
+                    getAnnotations(p.getAnnotationMirrors(), env),
+                    paramJavadoc
             ));
         }
         return result;
+    }
+
+    private static Map<String, String> extractParamDocsFromJavadoc(JavadocMetadata javadoc) {
+        var paramDocs = new HashMap<String, String>();
+        if (javadoc != null && javadoc.tags() != null) {
+            String paramTagValue = javadoc.tags().get("param");
+            if (paramTagValue != null) {
+                var paramPattern = Pattern.compile("(\\w+)\\s+(.*)");
+                var parts = paramTagValue.split("\\|");
+                for (var part : parts) {
+                    part = part.trim();
+                    var matcher = paramPattern.matcher(part);
+                    if (matcher.find()) {
+                        String paramName = matcher.group(1);
+                        String paramDesc = matcher.group(2);
+                        paramDocs.put(paramName, paramDesc);
+                    }
+                }
+            }
+        }
+        return paramDocs;
     }
 
     private static List<String> getThrowsTypes(ExecutableElement executable, Env env) {

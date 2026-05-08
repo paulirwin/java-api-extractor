@@ -10,20 +10,20 @@ import static org.junit.jupiter.api.Assertions.*;
 class MetadataCompareToTest {
 
     private static ParameterMetadata param(String name, String type) {
-        return new ParameterMetadata(name, type, type, List.of());
+        return new ParameterMetadata(name, type, type, List.of(), null);
     }
 
     private static MethodMetadata method(String name, String returnType, List<ParameterMetadata> params) {
-        return new MethodMetadata(name, returnType, returnType, params, List.of(), List.of(), List.of(), List.of(), false);
+        return new MethodMetadata(name, returnType, returnType, params, List.of(), List.of(), List.of(), List.of(), false, null);
     }
 
     private static FieldMetadata field(String name) {
-        return new FieldMetadata(name, "java.lang.String", "java.lang.String", List.of(), List.of(), false, null);
+        return new FieldMetadata(name, "java.lang.String", "java.lang.String", List.of(), List.of(), false, null, null);
     }
 
     private static TypeMetadata type(String pkg, String kind, String fullName) {
         return new TypeMetadata(pkg, kind, fullName.substring(fullName.lastIndexOf('.') + 1), fullName,
-                null, null, null, List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of());
+                null, null, null, List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), null);
     }
 
     @Nested
@@ -136,15 +136,15 @@ class MetadataCompareToTest {
     class Constructor {
         @Test
         void sortsByArity() {
-            var a = new ConstructorMetadata(List.of(), List.of(), List.of(), List.of(), false);
-            var b = new ConstructorMetadata(List.of(param("x", "int")), List.of(), List.of(), List.of(), false);
+            var a = new ConstructorMetadata(List.of(), List.of(), List.of(), List.of(), false, null);
+            var b = new ConstructorMetadata(List.of(param("x", "int")), List.of(), List.of(), List.of(), false, null);
             assertTrue(a.compareTo(b) < 0);
         }
 
         @Test
         void tieBreaksByParameterType() {
-            var a = new ConstructorMetadata(List.of(param("x", "java.lang.Integer")), List.of(), List.of(), List.of(), false);
-            var b = new ConstructorMetadata(List.of(param("y", "java.lang.String")), List.of(), List.of(), List.of(), false);
+            var a = new ConstructorMetadata(List.of(param("x", "java.lang.Integer")), List.of(), List.of(), List.of(), false, null);
+            var b = new ConstructorMetadata(List.of(param("y", "java.lang.String")), List.of(), List.of(), List.of(), false, null);
             assertTrue(a.compareTo(b) < 0);
         }
     }

@@ -7,7 +7,8 @@ public record ConstructorMetadata(
         List<String> modifiers,
         List<String> throwsTypes,
         List<AnnotationMetadata> annotations,
-        boolean isVarArgs) implements Comparable<ConstructorMetadata> {
+        boolean isVarArgs,
+        JavadocMetadata javadoc) implements Comparable<ConstructorMetadata> {
     public ConstructorMetadata {
         parameters = List.copyOf(parameters);
         modifiers = List.copyOf(modifiers);

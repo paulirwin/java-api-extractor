@@ -32,7 +32,7 @@ class JsonSerializerTest {
         var type = new TypeMetadata(
                 "pkg", "class", "Foo", "pkg.Foo", null, null, null,
                 List.of(), List.of(), List.of("public"), List.of(), List.of(),
-                List.of(), List.of(), List.of(), List.of());
+                List.of(), List.of(), List.of(), List.of(), null);
         var json = JsonSerializer.serialize(type);
 
         assertTrue(json.contains("\"packageName\":\"pkg\""));
