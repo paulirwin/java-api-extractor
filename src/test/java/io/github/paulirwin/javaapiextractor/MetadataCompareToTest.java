@@ -23,7 +23,7 @@ class MetadataCompareToTest {
 
     private static TypeMetadata type(String pkg, String kind, String fullName) {
         return new TypeMetadata(pkg, kind, fullName.substring(fullName.lastIndexOf('.') + 1), fullName,
-                null, null, null, List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of());
+                null, null, null, List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of());
     }
 
     @Nested

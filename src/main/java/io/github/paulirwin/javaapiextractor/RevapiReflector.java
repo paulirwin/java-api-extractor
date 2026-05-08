@@ -238,6 +238,7 @@ public class RevapiReflector {
                 annotations,
                 extractConstructors(type, env),
                 extractMethods(type, env),
+                extractEnumConstants(type, env),
                 extractFields(type, env)
         );
     }
@@ -345,7 +346,7 @@ public class RevapiReflector {
     static List<FieldMetadata> extractFields(TypeElement type, Env env) {
         var result = new ArrayList<FieldMetadata>();
         for (var member : type.getEnclosedElements()) {
-            if (member.getKind() != ElementKind.FIELD && member.getKind() != ElementKind.ENUM_CONSTANT) {
+            if (member.getKind() != ElementKind.FIELD) {
                 continue;
             }
             var field = (VariableElement) member;
@@ -364,6 +365,29 @@ public class RevapiReflector {
             ));
         }
         result.sort(FieldMetadata::compareTo);
+        return result;
+    }
+
+    /**
+     * Returns enum constants in source declaration order, which is also their
+     * {@code ordinal()} order. Empty for non-enum types. javac's element model
+     * preserves source order on {@link TypeElement#getEnclosedElements()}.
+     */
+    static List<EnumConstantMetadata> extractEnumConstants(TypeElement type, Env env) {
+        if (type.getKind() != ElementKind.ENUM) {
+            return List.of();
+        }
+        var result = new ArrayList<EnumConstantMetadata>();
+        for (var member : type.getEnclosedElements()) {
+            if (member.getKind() != ElementKind.ENUM_CONSTANT) {
+                continue;
+            }
+            var constant = (VariableElement) member;
+            // Enum constants are implicitly public — no isApiVisible filter needed.
+            result.add(new EnumConstantMetadata(
+                    constant.getSimpleName().toString(),
+                    getAnnotations(constant.getAnnotationMirrors(), env)));
+        }
         return result;
     }
 
