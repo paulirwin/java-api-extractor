@@ -1,0 +1,74 @@
+package io.github.paulirwin.javaapiextractor;
+
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.security.MessageDigest;
+import java.text.MessageFormat;
+import java.util.LinkedHashMap;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
+
+public class ExtractRunner {
+    public static void extract(ExtractContext context) throws Exception {
+        var libraries = reflect(context);
+        var json = JsonSerializer.serialize(libraries);
+
+        if (context.getOutputFile() != null) {
+            Files.writeString(Path.of(context.getOutputFile()), json);
+            System.err.println(MessageFormat.format("API extracted to: {0}", context.getOutputFile()));
+        } else {
+            System.out.println(json);
+        }
+    }
+
+    public static void printHash(ExtractContext context) throws Exception {
+        System.out.println(getHash(context));
+    }
+
+    /**
+     * Produces a SHA-256 of the API surface, keyed by artifactId rather than the full
+     * Maven coordinates. The group and version are deliberately excluded so that upgrading
+     * from e.g. 4.8.1 → 4.8.2 with identical APIs yields the same hash.
+     */
+    public static String getHash(ExtractContext context) throws Exception {
+        var libraries = reflect(context);
+
+        // Hash payload: artifactId -> types. Version and groupId are excluded so the hash
+        // reflects only the API surface.
+        var payload = new LinkedHashMap<String, Object>();
+        for (var lib : libraries) {
+            payload.put(lib.library().artifactId(), lib.types());
+        }
+        var json = JsonSerializer.serialize(payload);
+
+        MessageDigest digest = MessageDigest.getInstance("SHA-256");
+        byte[] hash = digest.digest(json.getBytes());
+
+        StringBuilder hexString = new StringBuilder();
+        for (byte b : hash) {
+            String hex = Integer.toHexString(0xff & b);
+            if (hex.length() == 1) {
+                hexString.append('0');
+            }
+            hexString.append(hex);
+        }
+
+        return hexString.toString();
+    }
+
+    private static java.util.List<LibraryResult> reflect(ExtractContext context) throws Exception {
+        System.err.println("Extracting API");
+        System.err.println(MessageFormat.format("Libraries: {0}",
+                Stream.of(context.getLibraries()).map(MavenCoordinates::artifactId).collect(Collectors.joining(", "))));
+
+        for (var library : context.getLibraries()) {
+            JarDownloader.downloadMavenDependency(context, library, context.isForce());
+        }
+
+        for (var dependency : context.getDependencies()) {
+            JarDownloader.downloadMavenDependency(context, dependency, context.isForce());
+        }
+
+        return RevapiReflector.reflectOverJars(context);
+    }
+}
