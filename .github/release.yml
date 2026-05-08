@@ -1,0 +1,28 @@
+changelog:
+  exclude:
+    labels:
+      - notes:ignore
+    authors:
+      - dependabot
+  categories:
+    - title: 💥 Breaking Changes
+      labels:
+        - notes:breaking-change
+    - title: 🎉 New Features
+      labels:
+        - notes:new-feature
+    - title: 🐞 Bug Fixes
+      labels:
+        - notes:bug-fix
+    - title: 🚀 Performance Improvements
+      labels:
+        - notes:performance-improvement
+    - title: 🏆 Improvements
+      labels:
+        - notes:improvement
+    - title: 📄 Website and Documentation
+      labels:
+        - notes:website-or-documentation
+    - title: 💪 Other Changes
+      labels:
+        - "*"
