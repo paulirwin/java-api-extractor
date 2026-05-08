@@ -17,6 +17,7 @@ import javax.lang.model.element.NestingKind;
 import javax.lang.model.element.TypeElement;
 import javax.lang.model.element.TypeParameterElement;
 import javax.lang.model.element.VariableElement;
+import javax.lang.model.util.SimpleAnnotationValueVisitor14;
 import javax.lang.model.type.ArrayType;
 import javax.lang.model.type.DeclaredType;
 import javax.lang.model.type.IntersectionType;
@@ -442,10 +443,99 @@ public class RevapiReflector {
                                                             Env env) {
         var result = new ArrayList<AnnotationMetadata>(annotationMirrors.size());
         for (var am : annotationMirrors) {
-            result.add(new AnnotationMetadata(typeNameOf(am.getAnnotationType(), false, env)));
+            result.add(new AnnotationMetadata(
+                    typeNameOf(am.getAnnotationType(), false, env),
+                    extractAnnotationArguments(am, env)));
         }
         result.sort(AnnotationMetadata::compareTo);
         return result;
+    }
+
+    /**
+     * Extracts only the element values explicitly written at the call site
+     * ({@link AnnotationMirror#getElementValues()}, not the with-defaults variant).
+     * Defaults are part of the annotation type's declaration, not the use site, so
+     * including them would inflate every annotation use with values the source didn't
+     * actually specify.
+     */
+    private static List<AnnotationArgument> extractAnnotationArguments(AnnotationMirror am, Env env) {
+        var entries = am.getElementValues();
+        if (entries.isEmpty()) {
+            return List.of();
+        }
+        var result = new ArrayList<AnnotationArgument>(entries.size());
+        for (var entry : entries.entrySet()) {
+            var name = entry.getKey().getSimpleName().toString();
+            var value = translateAnnotationValue(entry.getValue(), env);
+            result.add(new AnnotationArgument(name, value));
+        }
+        // AnnotationMetadata's canonical constructor sorts by name, but sorting here
+        // too keeps the contract local and explicit.
+        result.sort(AnnotationArgument::compareTo);
+        return result;
+    }
+
+    private static AnnotationValue translateAnnotationValue(
+            javax.lang.model.element.AnnotationValue av, Env env) {
+        return av.accept(new SimpleAnnotationValueVisitor14<AnnotationValue, Void>() {
+            @Override public AnnotationValue visitBoolean(boolean b, Void unused) {
+                return new AnnotationValue.BooleanValue(b);
+            }
+            @Override public AnnotationValue visitByte(byte b, Void unused) {
+                return new AnnotationValue.ByteValue(b);
+            }
+            @Override public AnnotationValue visitShort(short s, Void unused) {
+                return new AnnotationValue.ShortValue(s);
+            }
+            @Override public AnnotationValue visitInt(int i, Void unused) {
+                return new AnnotationValue.IntValue(i);
+            }
+            @Override public AnnotationValue visitLong(long l, Void unused) {
+                return new AnnotationValue.LongValue(l);
+            }
+            @Override public AnnotationValue visitFloat(float f, Void unused) {
+                return new AnnotationValue.FloatValue(f);
+            }
+            @Override public AnnotationValue visitDouble(double d, Void unused) {
+                return new AnnotationValue.DoubleValue(d);
+            }
+            @Override public AnnotationValue visitChar(char c, Void unused) {
+                return new AnnotationValue.CharValue(c);
+            }
+            @Override public AnnotationValue visitString(String s, Void unused) {
+                return new AnnotationValue.StringValue(s);
+            }
+            @Override public AnnotationValue visitType(TypeMirror t, Void unused) {
+                // `Foo.class` — render with the same binary-name form used elsewhere
+                // (e.g. Outer$Inner), matching how the rest of the JSON refers to types.
+                return new AnnotationValue.ClassValue(typeNameOf(t, false, env));
+            }
+            @Override public AnnotationValue visitEnumConstant(VariableElement c, Void unused) {
+                var enclosing = c.getEnclosingElement();
+                String typeName = (enclosing instanceof TypeElement te)
+                        ? env.elements().getBinaryName(te).toString()
+                        : enclosing.toString();
+                return new AnnotationValue.EnumValue(typeName, c.getSimpleName().toString());
+            }
+            @Override public AnnotationValue visitAnnotation(AnnotationMirror a, Void unused) {
+                return new AnnotationValue.AnnotationValueRef(new AnnotationMetadata(
+                        typeNameOf(a.getAnnotationType(), false, env),
+                        extractAnnotationArguments(a, env)));
+            }
+            @Override public AnnotationValue visitArray(
+                    List<? extends javax.lang.model.element.AnnotationValue> vals, Void unused) {
+                var elements = new ArrayList<AnnotationValue>(vals.size());
+                for (var inner : vals) {
+                    elements.add(translateAnnotationValue(inner, env));
+                }
+                return new AnnotationValue.ArrayValue(elements);
+            }
+            @Override protected AnnotationValue defaultAction(Object o, Void unused) {
+                // Unknown future kinds: surface as a string so the JSON stays valid
+                // rather than throwing. Should be unreachable on JLS 14+.
+                return new AnnotationValue.StringValue(String.valueOf(o));
+            }
+        }, null);
     }
 
     static List<String> getModifiers(Set<Modifier> modSet, TypeElement typeContext) {

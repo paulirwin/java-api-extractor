@@ -42,10 +42,24 @@ class JsonSerializerTest {
     }
 
     @Test
-    void serializesAnnotationMetadata() {
-        var ann = new AnnotationMetadata("java.lang.Deprecated");
+    void serializesAnnotationMetadataWithEmptyArguments() {
+        var ann = new AnnotationMetadata("java.lang.Deprecated", List.of());
         var json = JsonSerializer.serialize(ann);
-        assertEquals("{\"type\":\"java.lang.Deprecated\"}", json);
+        assertEquals("{\"type\":\"java.lang.Deprecated\",\"arguments\":[]}", json);
+    }
+
+    @Test
+    void serializesAnnotationMetadataWithArguments() {
+        var ann = new AnnotationMetadata("java.lang.Deprecated", List.of(
+                new AnnotationArgument("forRemoval", new AnnotationValue.BooleanValue(true)),
+                new AnnotationArgument("since", new AnnotationValue.StringValue("9"))));
+        var json = JsonSerializer.serialize(ann);
+        // Arguments are sorted alphabetically by name on construction.
+        assertEquals(
+                "{\"type\":\"java.lang.Deprecated\",\"arguments\":["
+                        + "{\"name\":\"forRemoval\",\"value\":{\"kind\":\"boolean\",\"value\":true}},"
+                        + "{\"name\":\"since\",\"value\":{\"kind\":\"string\",\"value\":\"9\"}}]}",
+                json);
     }
 
     @Test

@@ -153,9 +153,30 @@ class MetadataCompareToTest {
     class Annotation {
         @Test
         void sortsByTypeName() {
-            var a = new AnnotationMetadata("java.lang.Deprecated");
-            var b = new AnnotationMetadata("java.lang.Override");
+            var a = new AnnotationMetadata("java.lang.Deprecated", List.of());
+            var b = new AnnotationMetadata("java.lang.Override", List.of());
             assertTrue(a.compareTo(b) < 0);
+        }
+
+        @Test
+        void tieBreaksByArguments_whenTypeEqual() {
+            // Same annotation type, different element values — must not compare equal.
+            var a = new AnnotationMetadata("pkg.Ann", List.of(
+                    new AnnotationArgument("v", new AnnotationValue.IntValue(1))));
+            var b = new AnnotationMetadata("pkg.Ann", List.of(
+                    new AnnotationArgument("v", new AnnotationValue.IntValue(2))));
+            assertTrue(a.compareTo(b) < 0);
+        }
+
+        @Test
+        void argumentsAreSortedByName() {
+            // Construction must sort arguments so JSON output and compareTo are stable
+            // regardless of the order javac surfaces element values in.
+            var ann = new AnnotationMetadata("pkg.Ann", List.of(
+                    new AnnotationArgument("zzz", new AnnotationValue.IntValue(1)),
+                    new AnnotationArgument("aaa", new AnnotationValue.IntValue(2))));
+            assertEquals("aaa", ann.arguments().get(0).name());
+            assertEquals("zzz", ann.arguments().get(1).name());
         }
     }
 }
