@@ -24,6 +24,10 @@ class ExtractRunnerIT {
             "org.apache.lucene:lucene-analyzers-common:4.8.1"
     };
 
+    private static final String[] ICU4J_60_1_LIBS = {
+            "com.ibm.icu:icu4j:60.1"
+    };
+
     @Test
     void testHashIsStable() throws Exception {
         var context1 = new ExtractContext("download", LUCENE_4_8_1_LIBS, false, null, new String[0]);
@@ -68,6 +72,37 @@ class ExtractRunnerIT {
         Set<ValidationMessage> messages = schema.validate(node);
         assertTrue(messages.isEmpty(),
                 () -> "Lucene API JSON failed schema validation:\n"
+                        + messages.stream()
+                                .map(ValidationMessage::toString)
+                                .reduce((a, b) -> a + "\n" + b)
+                                .orElse(""));
+    }
+
+    /**
+     * End-to-end: ICU4j extraction must produce JSON that validates against the schema.
+     * ICU4j includes many Javadoc examples with custom @stable tags, making it a good
+     * test for comprehensive Javadoc extraction (see issue #11).
+     */
+    @Test
+    void extractedICU4jJsonValidatesAgainstSchema() throws Exception {
+        var context = new ExtractContext("download", ICU4J_60_1_LIBS, false, null, new String[0]);
+
+        var libraries = RevapiReflector.reflectOverJars(context);
+        var json = JsonSerializer.serialize(libraries);
+
+        var objectMapper = new ObjectMapper();
+        var node = objectMapper.readTree(json);
+
+        JsonSchema schema;
+        var factory = JsonSchemaFactory.getInstance(SpecVersion.VersionFlag.V7);
+        try (var schemaStream = ExtractRunnerIT.class.getResourceAsStream("/api-schema.json")) {
+            assertNotNull(schemaStream, "Schema file not found in resources");
+            schema = factory.getSchema(schemaStream);
+        }
+
+        Set<ValidationMessage> messages = schema.validate(node);
+        assertTrue(messages.isEmpty(),
+                () -> "ICU4j API JSON failed schema validation:\n"
                         + messages.stream()
                                 .map(ValidationMessage::toString)
                                 .reduce((a, b) -> a + "\n" + b)
