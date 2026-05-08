@@ -78,6 +78,21 @@
     </distributionManagement>
 
     <build>
+        <testResources>
+            <testResource>
+                <directory>src/test/resources</directory>
+            </testResource>
+            <!-- Expose the canonical schema (at the repo root) on the test classpath so
+                 JsonSchemaValidationTest / ExtractRunnerIT can load it via getResource().
+                 Avoids keeping a second copy under src/test/resources that would silently
+                 drift out of sync. -->
+            <testResource>
+                <directory>${project.basedir}</directory>
+                <includes>
+                    <include>api-schema.json</include>
+                </includes>
+            </testResource>
+        </testResources>
         <plugins>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
