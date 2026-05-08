@@ -38,11 +38,11 @@ import java.util.jar.JarFile;
  * Builds {@link TypeMetadata} for each public/protected type in a JAR by driving Revapi's
  * Java analyzer.
  * <p>
- * Type discovery walks the JAR entries directly (so package-private outer classes still
- * surface their public nested types, matching {@link JarReflector}'s output). Reflection-
- * style introspection then runs against javac's compile-time element model — unresolvable
- * transitive references become symbolic error types rather than {@code NoClassDefFoundError},
- * which is the original reason for switching off {@code java.lang.reflect}.
+ * Type discovery walks the JAR entries directly so package-private outer classes still
+ * surface their public nested types. Reflection-style introspection then runs against
+ * javac's compile-time element model — unresolvable transitive references become symbolic
+ * error types rather than {@code NoClassDefFoundError}, which is the original reason for
+ * switching off {@code java.lang.reflect}.
  */
 public class RevapiReflector {
 
