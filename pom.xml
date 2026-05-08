@@ -140,6 +140,14 @@
                             <transformers>
                                 <!-- Merge META-INF/services SPI files (Revapi, Jackson, Log4j all use them). -->
                                 <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
+                                <!-- Merge Apache LICENSE/NOTICE files from third-party jars instead of dropping them. -->
+                                <transformer implementation="org.apache.maven.plugins.shade.resource.ApacheNoticeResourceTransformer"/>
+                                <transformer implementation="org.apache.maven.plugins.shade.resource.AppendingTransformer">
+                                    <resource>META-INF/LICENSE</resource>
+                                </transformer>
+                                <transformer implementation="org.apache.maven.plugins.shade.resource.AppendingTransformer">
+                                    <resource>META-INF/LICENSE.txt</resource>
+                                </transformer>
                                 <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
                                     <manifestEntries>
                                         <Main-Class>io.github.paulirwin.javaapiextractor.Main</Main-Class>
@@ -154,7 +162,12 @@
                                         <exclude>META-INF/*.SF</exclude>
                                         <exclude>META-INF/*.DSA</exclude>
                                         <exclude>META-INF/*.RSA</exclude>
+                                        <exclude>META-INF/DEPENDENCIES</exclude>
+                                        <!-- ManifestResourceTransformer writes its own merged manifest, so suppress the
+                                             overlap warning by dropping the per-jar manifests before transform. -->
+                                        <exclude>META-INF/MANIFEST.MF</exclude>
                                         <exclude>module-info.class</exclude>
+                                        <exclude>META-INF/versions/*/module-info.class</exclude>
                                     </excludes>
                                 </filter>
                             </filters>
