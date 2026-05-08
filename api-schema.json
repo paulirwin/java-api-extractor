@@ -1,0 +1,666 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Java API Extractor Output Schema",
+  "description": "JSON schema for the API extracted from Java libraries by java-api-extractor",
+  "type": "array",
+  "items": {
+    "$ref": "#/definitions/LibraryResult"
+  },
+  "definitions": {
+    "LibraryResult": {
+      "type": "object",
+      "required": ["library", "types"],
+      "properties": {
+        "library": {
+          "$ref": "#/definitions/MavenCoordinates"
+        },
+        "types": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/TypeMetadata"
+          }
+        }
+      }
+    },
+    "MavenCoordinates": {
+      "type": "object",
+      "required": ["groupId", "artifactId", "version"],
+      "properties": {
+        "groupId": {
+          "type": "string"
+        },
+        "artifactId": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        }
+      }
+    },
+    "TypeMetadata": {
+      "type": "object",
+      "required": [
+        "packageName",
+        "kind",
+        "name",
+        "fullName",
+        "modifiers"
+      ],
+      "properties": {
+        "packageName": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string",
+          "enum": ["class", "interface", "enum", "record", "annotation"]
+        },
+        "name": {
+          "type": "string"
+        },
+        "fullName": {
+          "type": "string"
+        },
+        "enclosingType": {
+          "type": ["string", "null"]
+        },
+        "baseType": {
+          "type": ["string", "null"]
+        },
+        "genericBaseType": {
+          "type": ["string", "null"]
+        },
+        "interfaces": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "genericInterfaces": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "modifiers": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "typeParameters": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "annotations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/AnnotationMetadata"
+          }
+        },
+        "constructors": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ConstructorMetadata"
+          }
+        },
+        "methods": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/MethodMetadata"
+          }
+        },
+        "enumConstants": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/EnumConstantMetadata"
+          }
+        },
+        "fields": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/FieldMetadata"
+          }
+        }
+      }
+    },
+    "AnnotationMetadata": {
+      "type": "object",
+      "required": ["type", "arguments"],
+      "properties": {
+        "type": {
+          "type": "string"
+        },
+        "arguments": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/AnnotationArgument"
+          }
+        }
+      }
+    },
+    "AnnotationArgument": {
+      "type": "object",
+      "required": ["name", "value"],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "value": {
+          "$ref": "#/definitions/AnnotationValue"
+        }
+      }
+    },
+    "AnnotationValue": {
+      "oneOf": [
+        {
+          "$ref": "#/definitions/BooleanAnnotationValue"
+        },
+        {
+          "$ref": "#/definitions/ByteAnnotationValue"
+        },
+        {
+          "$ref": "#/definitions/ShortAnnotationValue"
+        },
+        {
+          "$ref": "#/definitions/IntAnnotationValue"
+        },
+        {
+          "$ref": "#/definitions/LongAnnotationValue"
+        },
+        {
+          "$ref": "#/definitions/FloatAnnotationValue"
+        },
+        {
+          "$ref": "#/definitions/DoubleAnnotationValue"
+        },
+        {
+          "$ref": "#/definitions/CharAnnotationValue"
+        },
+        {
+          "$ref": "#/definitions/StringAnnotationValue"
+        },
+        {
+          "$ref": "#/definitions/ClassAnnotationValue"
+        },
+        {
+          "$ref": "#/definitions/EnumAnnotationValue"
+        },
+        {
+          "$ref": "#/definitions/AnnotationValueRef"
+        },
+        {
+          "$ref": "#/definitions/ArrayAnnotationValue"
+        }
+      ]
+    },
+    "BooleanAnnotationValue": {
+      "type": "object",
+      "required": ["kind", "value"],
+      "properties": {
+        "kind": {
+          "const": "boolean"
+        },
+        "value": {
+          "type": "boolean"
+        }
+      }
+    },
+    "ByteAnnotationValue": {
+      "type": "object",
+      "required": ["kind", "value"],
+      "properties": {
+        "kind": {
+          "const": "byte"
+        },
+        "value": {
+          "type": "integer"
+        }
+      }
+    },
+    "ShortAnnotationValue": {
+      "type": "object",
+      "required": ["kind", "value"],
+      "properties": {
+        "kind": {
+          "const": "short"
+        },
+        "value": {
+          "type": "integer"
+        }
+      }
+    },
+    "IntAnnotationValue": {
+      "type": "object",
+      "required": ["kind", "value"],
+      "properties": {
+        "kind": {
+          "const": "int"
+        },
+        "value": {
+          "type": "integer"
+        }
+      }
+    },
+    "LongAnnotationValue": {
+      "type": "object",
+      "required": ["kind", "value"],
+      "properties": {
+        "kind": {
+          "const": "long"
+        },
+        "value": {
+          "type": "integer"
+        }
+      }
+    },
+    "FloatAnnotationValue": {
+      "type": "object",
+      "required": ["kind", "value"],
+      "properties": {
+        "kind": {
+          "const": "float"
+        },
+        "value": {
+          "type": "number"
+        }
+      }
+    },
+    "DoubleAnnotationValue": {
+      "type": "object",
+      "required": ["kind", "value"],
+      "properties": {
+        "kind": {
+          "const": "double"
+        },
+        "value": {
+          "type": "number"
+        }
+      }
+    },
+    "CharAnnotationValue": {
+      "type": "object",
+      "required": ["kind", "value"],
+      "properties": {
+        "kind": {
+          "const": "char"
+        },
+        "value": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1
+        }
+      }
+    },
+    "StringAnnotationValue": {
+      "type": "object",
+      "required": ["kind", "value"],
+      "properties": {
+        "kind": {
+          "const": "string"
+        },
+        "value": {
+          "type": "string"
+        }
+      }
+    },
+    "ClassAnnotationValue": {
+      "type": "object",
+      "required": ["kind", "value"],
+      "properties": {
+        "kind": {
+          "const": "class"
+        },
+        "value": {
+          "type": "string"
+        }
+      }
+    },
+    "EnumAnnotationValue": {
+      "type": "object",
+      "required": ["kind", "type", "value"],
+      "properties": {
+        "kind": {
+          "const": "enum"
+        },
+        "type": {
+          "type": "string"
+        },
+        "value": {
+          "type": "string"
+        }
+      }
+    },
+    "AnnotationValueRef": {
+      "type": "object",
+      "required": ["kind", "value"],
+      "properties": {
+        "kind": {
+          "const": "annotation"
+        },
+        "value": {
+          "$ref": "#/definitions/AnnotationMetadata"
+        }
+      }
+    },
+    "ArrayAnnotationValue": {
+      "type": "object",
+      "required": ["kind", "value"],
+      "properties": {
+        "kind": {
+          "const": "array"
+        },
+        "value": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/AnnotationValue"
+          }
+        }
+      }
+    },
+    "ConstructorMetadata": {
+      "type": "object",
+      "required": ["parameters", "modifiers", "throwsTypes", "annotations", "isVarArgs"],
+      "properties": {
+        "parameters": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ParameterMetadata"
+          }
+        },
+        "modifiers": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "throwsTypes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "annotations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/AnnotationMetadata"
+          }
+        },
+        "isVarArgs": {
+          "type": "boolean"
+        }
+      }
+    },
+    "MethodMetadata": {
+      "type": "object",
+      "required": [
+        "name",
+        "returnType",
+        "parameters",
+        "modifiers",
+        "typeParameters",
+        "throwsTypes",
+        "annotations",
+        "isVarArgs"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "returnType": {
+          "type": "string"
+        },
+        "genericReturnType": {
+          "type": ["string", "null"]
+        },
+        "parameters": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ParameterMetadata"
+          }
+        },
+        "modifiers": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "typeParameters": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "throwsTypes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "annotations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/AnnotationMetadata"
+          }
+        },
+        "isVarArgs": {
+          "type": "boolean"
+        }
+      }
+    },
+    "ParameterMetadata": {
+      "type": "object",
+      "required": ["name", "type", "annotations"],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        },
+        "genericType": {
+          "type": ["string", "null"]
+        },
+        "annotations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/AnnotationMetadata"
+          }
+        }
+      }
+    },
+    "EnumConstantMetadata": {
+      "type": "object",
+      "required": ["name", "annotations"],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "annotations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/AnnotationMetadata"
+          }
+        }
+      }
+    },
+    "FieldMetadata": {
+      "type": "object",
+      "required": ["name", "type", "modifiers", "annotations", "isStatic"],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        },
+        "genericType": {
+          "type": ["string", "null"]
+        },
+        "modifiers": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "annotations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/AnnotationMetadata"
+          }
+        },
+        "isStatic": {
+          "type": "boolean"
+        },
+        "constantValue": {
+          "oneOf": [
+            {"type": "null"},
+            {"$ref": "#/definitions/ConstantValue"}
+          ]
+        }
+      }
+    },
+    "ConstantValue": {
+      "oneOf": [
+        {
+          "$ref": "#/definitions/BooleanConstantValue"
+        },
+        {
+          "$ref": "#/definitions/ByteConstantValue"
+        },
+        {
+          "$ref": "#/definitions/ShortConstantValue"
+        },
+        {
+          "$ref": "#/definitions/IntConstantValue"
+        },
+        {
+          "$ref": "#/definitions/LongConstantValue"
+        },
+        {
+          "$ref": "#/definitions/FloatConstantValue"
+        },
+        {
+          "$ref": "#/definitions/DoubleConstantValue"
+        },
+        {
+          "$ref": "#/definitions/CharConstantValue"
+        },
+        {
+          "$ref": "#/definitions/StringConstantValue"
+        }
+      ]
+    },
+    "BooleanConstantValue": {
+      "type": "object",
+      "required": ["kind", "value"],
+      "properties": {
+        "kind": {
+          "const": "boolean"
+        },
+        "value": {
+          "type": "boolean"
+        }
+      }
+    },
+    "ByteConstantValue": {
+      "type": "object",
+      "required": ["kind", "value"],
+      "properties": {
+        "kind": {
+          "const": "byte"
+        },
+        "value": {
+          "type": "integer"
+        }
+      }
+    },
+    "ShortConstantValue": {
+      "type": "object",
+      "required": ["kind", "value"],
+      "properties": {
+        "kind": {
+          "const": "short"
+        },
+        "value": {
+          "type": "integer"
+        }
+      }
+    },
+    "IntConstantValue": {
+      "type": "object",
+      "required": ["kind", "value"],
+      "properties": {
+        "kind": {
+          "const": "int"
+        },
+        "value": {
+          "type": "integer"
+        }
+      }
+    },
+    "LongConstantValue": {
+      "type": "object",
+      "required": ["kind", "value"],
+      "properties": {
+        "kind": {
+          "const": "long"
+        },
+        "value": {
+          "type": "integer"
+        }
+      }
+    },
+    "FloatConstantValue": {
+      "type": "object",
+      "required": ["kind", "value"],
+      "properties": {
+        "kind": {
+          "const": "float"
+        },
+        "value": {
+          "type": "number"
+        }
+      }
+    },
+    "DoubleConstantValue": {
+      "type": "object",
+      "required": ["kind", "value"],
+      "properties": {
+        "kind": {
+          "const": "double"
+        },
+        "value": {
+          "type": "number"
+        }
+      }
+    },
+    "CharConstantValue": {
+      "type": "object",
+      "required": ["kind", "value"],
+      "properties": {
+        "kind": {
+          "const": "char"
+        },
+        "value": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1
+        }
+      }
+    },
+    "StringConstantValue": {
+      "type": "object",
+      "required": ["kind", "value"],
+      "properties": {
+        "kind": {
+          "const": "string"
+        },
+        "value": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}
