@@ -359,11 +359,47 @@ public class RevapiReflector {
                     typeNameOf(fieldType, true, env),
                     sorted(getModifiers(field.getModifiers(), null)),
                     getAnnotations(field.getAnnotationMirrors(), env),
-                    field.getModifiers().contains(Modifier.STATIC)
+                    field.getModifiers().contains(Modifier.STATIC),
+                    constantValueOf(field)
             ));
         }
         result.sort(FieldMetadata::compareTo);
         return result;
+    }
+
+    /**
+     * Lifts a {@code public static final} field's compile-time constant (per JLS §15.28)
+     * into a {@link ConstantValue}. Returns {@code null} when the field has no constant
+     * value — non-final fields, non-primitive non-String types, and finals whose
+     * initializer isn't a compile-time constant expression all fall through here. The
+     * boxed return type from {@link VariableElement#getConstantValue()} is exactly the
+     * JLS-permitted set: {@code Boolean}, {@code Byte}, {@code Short}, {@code Integer},
+     * {@code Long}, {@code Float}, {@code Double}, {@code Character}, {@code String}.
+     * <p>
+     * Restricted to {@code static} fields: instance finals can satisfy javac's
+     * constant-variable rule (JLS §4.12.4) but their values aren't inlined into callers
+     * — only static constants are part of the binary API surface.
+     */
+    private static ConstantValue constantValueOf(VariableElement field) {
+        var mods = field.getModifiers();
+        if (!mods.contains(Modifier.STATIC) || !mods.contains(Modifier.FINAL)) {
+            return null;
+        }
+        Object cv = field.getConstantValue();
+        if (cv == null) {
+            return null;
+        }
+        if (cv instanceof Boolean b) return new ConstantValue.BooleanValue(b);
+        if (cv instanceof Byte b) return new ConstantValue.ByteValue(b);
+        if (cv instanceof Short s) return new ConstantValue.ShortValue(s);
+        if (cv instanceof Integer i) return new ConstantValue.IntValue(i);
+        if (cv instanceof Long l) return new ConstantValue.LongValue(l);
+        if (cv instanceof Float f) return new ConstantValue.FloatValue(f);
+        if (cv instanceof Double d) return new ConstantValue.DoubleValue(d);
+        if (cv instanceof Character c) return new ConstantValue.CharValue(c);
+        if (cv instanceof String s) return new ConstantValue.StringValue(s);
+        // Defensive: shouldn't be reachable per JLS, but don't drop data on the floor.
+        return new ConstantValue.StringValue(String.valueOf(cv));
     }
 
     private static List<ParameterMetadata> buildParameters(ExecutableElement executable, Env env) {

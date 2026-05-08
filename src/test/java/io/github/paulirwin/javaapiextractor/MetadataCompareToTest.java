@@ -18,7 +18,7 @@ class MetadataCompareToTest {
     }
 
     private static FieldMetadata field(String name) {
-        return new FieldMetadata(name, "java.lang.String", "java.lang.String", List.of(), List.of(), false);
+        return new FieldMetadata(name, "java.lang.String", "java.lang.String", List.of(), List.of(), false, null);
     }
 
     private static TypeMetadata type(String pkg, String kind, String fullName) {
