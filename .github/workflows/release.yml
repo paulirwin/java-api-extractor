@@ -63,18 +63,15 @@ jobs:
         run: |
           mkdir -p release-assets
           version="${{ steps.version.outputs.version }}"
-          jar="target/java-api-extractor-${version}.jar"
-          if [[ ! -f "$jar" ]]; then
-            echo "::error::Expected jar not found: $jar"
+          # The unshaded jar (Maven-consumable) is published to GitHub Packages above.
+          # Attach the shaded "all" jar to the GitHub Release for direct `java -jar` use.
+          fatjar="target/java-api-extractor-${version}-all.jar"
+          if [[ ! -f "$fatjar" ]]; then
+            echo "::error::Expected fat jar not found: $fatjar"
             ls -la target/
             exit 1
           fi
-          cp "$jar" release-assets/
-          # Bundle the runtime lib/ alongside the jar so a downloader gets a runnable set.
-          if [[ -d target/lib ]]; then
-            tar -C target -czf "release-assets/java-api-extractor-${version}-with-deps.tar.gz" \
-              "java-api-extractor-${version}.jar" lib
-          fi
+          cp "$fatjar" release-assets/
           ls -la release-assets/
 
       - name: Create GitHub Release
