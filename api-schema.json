@@ -514,7 +514,10 @@
           "type": "boolean"
         },
         "constantValue": {
-          "$ref": "#/definitions/ConstantValue"
+          "oneOf": [
+            {"type": "null"},
+            {"$ref": "#/definitions/ConstantValue"}
+          ]
         }
       }
     },

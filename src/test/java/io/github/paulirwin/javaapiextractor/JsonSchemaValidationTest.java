@@ -2,358 +2,208 @@ package io.github.paulirwin.javaapiextractor;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.networknt.schema.JsonSchema;
+import com.networknt.schema.JsonSchemaFactory;
+import com.networknt.schema.SpecVersion;
+import com.networknt.schema.ValidationMessage;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
-import java.io.IOException;
-import java.io.InputStream;
+import javax.tools.JavaCompiler;
+import javax.tools.JavaFileObject;
+import javax.tools.SimpleJavaFileObject;
+import javax.tools.ToolProvider;
+import java.net.URI;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
+import java.util.jar.JarEntry;
+import java.util.jar.JarOutputStream;
+import java.util.stream.Stream;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
+/**
+ * Compiles a fixture jar that exercises every metadata variant, runs the real extraction
+ * pipeline, and validates the resulting JSON against {@code api-schema.json}. The schema
+ * itself is also asserted to load cleanly so a malformed schema fails fast.
+ */
 class JsonSchemaValidationTest {
+    private static JsonSchema schema;
     private static ObjectMapper objectMapper;
-    private static JsonNode schemaNode;
+
+    @TempDir
+    static Path workDir;
+    static Path fixtureJar;
 
     @BeforeAll
-    static void loadSchema() throws IOException {
+    static void setUp() throws Exception {
         objectMapper = new ObjectMapper();
-        try (InputStream schemaStream = JsonSchemaValidationTest.class.getResourceAsStream("/api-schema.json")) {
+        var factory = JsonSchemaFactory.getInstance(SpecVersion.VersionFlag.V7);
+        try (var schemaStream = JsonSchemaValidationTest.class.getResourceAsStream("/api-schema.json")) {
             assertNotNull(schemaStream, "Schema file not found in resources");
-            schemaNode = objectMapper.readTree(schemaStream);
+            schema = factory.getSchema(schemaStream);
         }
-    }
 
-    @Test
-    void schemaIsValid() {
-        assertNotNull(schemaNode, "Schema node should be loaded");
-        assertTrue(schemaNode.has("$schema"), "Schema should have $schema property");
-        assertTrue(schemaNode.has("definitions"), "Schema should have definitions");
-        assertEquals("array", schemaNode.get("type").asText(), "Root schema should be an array");
-    }
+        var sources = List.of(
+                source("fx.MyAnnotation", """
+                        package fx;
+                        import java.lang.annotation.*;
+                        @Retention(RetentionPolicy.RUNTIME)
+                        public @interface MyAnnotation {
+                            String value() default "";
+                            int count() default 0;
+                            Class<?>[] classes() default {};
+                        }
+                        """),
+                source("fx.Color", """
+                        package fx;
+                        public enum Color {
+                            RED, GREEN, BLUE
+                        }
+                        """),
+                source("fx.MyInterface", """
+                        package fx;
+                        public interface MyInterface<T> {
+                            T get();
+                            default void doNothing() {}
+                        }
+                        """),
+                source("fx.Point", """
+                        package fx;
+                        public record Point(int x, int y) {}
+                        """),
+                source("fx.Sample", """
+                        package fx;
+                        import java.util.List;
+                        @MyAnnotation(value = "hello", count = 42, classes = {String.class, Integer.class})
+                        public class Sample<T extends Number> implements MyInterface<T> {
+                            public static final int MAX = 100;
+                            public static final String NAME = "sample";
+                            public static final double PI = 3.14;
+                            public static final char INITIAL = 'S';
+                            public static final boolean ENABLED = true;
 
-    @Test
-    void schemaHasRequiredDefinitions() {
-        JsonNode definitions = schemaNode.get("definitions");
-        assertTrue(definitions.has("LibraryResult"), "Schema should define LibraryResult");
-        assertTrue(definitions.has("TypeMetadata"), "Schema should define TypeMetadata");
-        assertTrue(definitions.has("MethodMetadata"), "Schema should define MethodMetadata");
-        assertTrue(definitions.has("FieldMetadata"), "Schema should define FieldMetadata");
-        assertTrue(definitions.has("ConstructorMetadata"), "Schema should define ConstructorMetadata");
-        assertTrue(definitions.has("AnnotationMetadata"), "Schema should define AnnotationMetadata");
-        assertTrue(definitions.has("ParameterMetadata"), "Schema should define ParameterMetadata");
-        assertTrue(definitions.has("EnumConstantMetadata"), "Schema should define EnumConstantMetadata");
-        assertTrue(definitions.has("ConstantValue"), "Schema should define ConstantValue");
-        assertTrue(definitions.has("AnnotationValue"), "Schema should define AnnotationValue");
-    }
+                            private final T value;
 
-    @Test
-    void emptyArrayIsValid() throws IOException {
-        String json = "[]";
-        JsonNode node = objectMapper.readTree(json);
-        assertTrue(node.isArray(), "Parsed JSON should be array");
-        assertEquals(0, node.size(), "Empty array should have size 0");
-    }
-
-    @Test
-    void libraryResultStructureIsValid() throws IOException {
-        String json = """
-                [
-                  {
-                    "library": {
-                      "groupId": "com.example",
-                      "artifactId": "my-lib",
-                      "version": "1.0.0"
-                    },
-                    "types": []
-                  }
-                ]
-                """;
-        JsonNode node = objectMapper.readTree(json);
-        assertTrue(node.isArray(), "Parsed JSON should be array");
-        assertTrue(node.get(0).has("library"), "LibraryResult should have library");
-        assertTrue(node.get(0).has("types"), "LibraryResult should have types");
-        assertTrue(node.get(0).get("types").isArray(), "types should be array");
-    }
-
-    @Test
-    void typeMetadataStructureIsValid() throws IOException {
-        String json = """
-                [
-                  {
-                    "library": {
-                      "groupId": "com.example",
-                      "artifactId": "my-lib",
-                      "version": "1.0.0"
-                    },
-                    "types": [
-                      {
-                        "packageName": "com.example",
-                        "kind": "class",
-                        "name": "MyClass",
-                        "fullName": "com.example.MyClass",
-                        "modifiers": ["public"],
-                        "interfaces": [],
-                        "genericInterfaces": [],
-                        "typeParameters": [],
-                        "annotations": [],
-                        "constructors": [],
-                        "methods": [],
-                        "enumConstants": [],
-                        "fields": []
-                      }
-                    ]
-                  }
-                ]
-                """;
-        JsonNode node = objectMapper.readTree(json);
-        JsonNode type = node.get(0).get("types").get(0);
-        assertTrue(type.has("packageName"), "TypeMetadata should have packageName");
-        assertTrue(type.has("kind"), "TypeMetadata should have kind");
-        assertTrue(type.has("name"), "TypeMetadata should have name");
-        assertTrue(type.has("fullName"), "TypeMetadata should have fullName");
-        assertTrue(type.has("modifiers"), "TypeMetadata should have modifiers");
-        assertEquals("class", type.get("kind").asText(), "kind should be 'class'");
-    }
-
-    @Test
-    void validKindValues() throws IOException {
-        List<String> validKinds = List.of("class", "interface", "enum", "record", "annotation");
-        JsonNode definitions = schemaNode.get("definitions");
-        JsonNode typeMetadata = definitions.get("TypeMetadata");
-        JsonNode kindProperty = typeMetadata.get("properties").get("kind");
-
-        for (String validKind : validKinds) {
-            assertTrue(kindProperty.get("enum").toString().contains(validKind),
-                    "kind enum should include: " + validKind);
-        }
-    }
-
-    @Test
-    void methodMetadataCanBeParsed() throws IOException {
-        String json = """
-                [
-                  {
-                    "library": {
-                      "groupId": "com.example",
-                      "artifactId": "my-lib",
-                      "version": "1.0.0"
-                    },
-                    "types": [
-                      {
-                        "packageName": "com.example",
-                        "kind": "class",
-                        "name": "MyClass",
-                        "fullName": "com.example.MyClass",
-                        "modifiers": ["public"],
-                        "interfaces": [],
-                        "genericInterfaces": [],
-                        "typeParameters": [],
-                        "annotations": [],
-                        "constructors": [],
-                        "methods": [
-                          {
-                            "name": "getValue",
-                            "returnType": "int",
-                            "parameters": [],
-                            "modifiers": ["public"],
-                            "typeParameters": [],
-                            "throwsTypes": [],
-                            "annotations": [],
-                            "isVarArgs": false
-                          }
-                        ],
-                        "enumConstants": [],
-                        "fields": []
-                      }
-                    ]
-                  }
-                ]
-                """;
-        JsonNode node = objectMapper.readTree(json);
-        JsonNode method = node.get(0).get("types").get(0).get("methods").get(0);
-        assertEquals("getValue", method.get("name").asText());
-        assertEquals("int", method.get("returnType").asText());
-        assertTrue(method.get("parameters").isArray());
-        assertTrue(method.get("modifiers").isArray());
-    }
-
-    @Test
-    void annotationValueTypesAreDefined() {
-        JsonNode definitions = schemaNode.get("definitions");
-        assertTrue(definitions.has("BooleanAnnotationValue"));
-        assertTrue(definitions.has("IntAnnotationValue"));
-        assertTrue(definitions.has("StringAnnotationValue"));
-        assertTrue(definitions.has("ClassAnnotationValue"));
-        assertTrue(definitions.has("EnumAnnotationValue"));
-        assertTrue(definitions.has("ArrayAnnotationValue"));
-        assertTrue(definitions.has("AnnotationValueRef"));
-    }
-
-    @Test
-    void constantValueTypesAreDefined() {
-        JsonNode definitions = schemaNode.get("definitions");
-        assertTrue(definitions.has("BooleanConstantValue"));
-        assertTrue(definitions.has("IntConstantValue"));
-        assertTrue(definitions.has("LongConstantValue"));
-        assertTrue(definitions.has("StringConstantValue"));
-        assertTrue(definitions.has("CharConstantValue"));
-    }
-
-    @Test
-    void enumConstantMetadataCanBeParsed() throws IOException {
-        String json = """
-                [
-                  {
-                    "library": {
-                      "groupId": "com.example",
-                      "artifactId": "my-lib",
-                      "version": "1.0.0"
-                    },
-                    "types": [
-                      {
-                        "packageName": "com.example",
-                        "kind": "enum",
-                        "name": "Color",
-                        "fullName": "com.example.Color",
-                        "modifiers": ["public"],
-                        "interfaces": [],
-                        "genericInterfaces": [],
-                        "typeParameters": [],
-                        "annotations": [],
-                        "constructors": [],
-                        "methods": [],
-                        "enumConstants": [
-                          {
-                            "name": "RED",
-                            "annotations": []
-                          },
-                          {
-                            "name": "GREEN",
-                            "annotations": []
-                          }
-                        ],
-                        "fields": []
-                      }
-                    ]
-                  }
-                ]
-                """;
-        JsonNode node = objectMapper.readTree(json);
-        JsonNode enumConstants = node.get(0).get("types").get(0).get("enumConstants");
-        assertEquals(2, enumConstants.size());
-        assertEquals("RED", enumConstants.get(0).get("name").asText());
-        assertEquals("GREEN", enumConstants.get(1).get("name").asText());
-    }
-
-    @Test
-    void fieldWithConstantValueCanBeParsed() throws IOException {
-        String json = """
-                [
-                  {
-                    "library": {
-                      "groupId": "com.example",
-                      "artifactId": "my-lib",
-                      "version": "1.0.0"
-                    },
-                    "types": [
-                      {
-                        "packageName": "com.example",
-                        "kind": "class",
-                        "name": "MyClass",
-                        "fullName": "com.example.MyClass",
-                        "modifiers": ["public"],
-                        "interfaces": [],
-                        "genericInterfaces": [],
-                        "typeParameters": [],
-                        "annotations": [],
-                        "constructors": [],
-                        "methods": [],
-                        "enumConstants": [],
-                        "fields": [
-                          {
-                            "name": "MAX_SIZE",
-                            "type": "int",
-                            "modifiers": ["public", "static", "final"],
-                            "annotations": [],
-                            "isStatic": true,
-                            "constantValue": {
-                              "kind": "int",
-                              "value": 100
+                            public Sample(T value) { this.value = value; }
+                            public Sample(T value, String label) throws IllegalArgumentException {
+                                this.value = value;
                             }
-                          }
-                        ]
-                      }
-                    ]
-                  }
-                ]
-                """;
-        JsonNode node = objectMapper.readTree(json);
-        JsonNode field = node.get(0).get("types").get(0).get("fields").get(0);
-        assertEquals("MAX_SIZE", field.get("name").asText());
-        assertTrue(field.has("constantValue"));
-        assertEquals("int", field.get("constantValue").get("kind").asText());
-        assertEquals(100, field.get("constantValue").get("value").asInt());
+
+                            @Override
+                            public T get() { return value; }
+
+                            public <R> R transform(java.util.function.Function<T, R> fn) {
+                                return fn.apply(value);
+                            }
+
+                            public void varargsMethod(String first, Object... rest) {}
+
+                            @Deprecated(since = "2.0", forRemoval = true)
+                            public List<String> deprecatedMethod() { return List.of(); }
+                        }
+                        """));
+
+        var classesDir = workDir.resolve("classes");
+        Files.createDirectories(classesDir);
+        compile(sources, classesDir);
+
+        fixtureJar = workDir.resolve("fixture-0.jar");
+        packageJar(classesDir, fixtureJar);
     }
 
     @Test
-    void annotationWithMultipleArgumentTypesCanBeParsed() throws IOException {
-        String json = """
+    void schemaLoadsAndDeclaresArrayRoot() throws Exception {
+        try (var schemaStream = JsonSchemaValidationTest.class.getResourceAsStream("/api-schema.json")) {
+            var raw = objectMapper.readTree(schemaStream);
+            assertTrue(raw.has("$schema"), "schema must declare $schema");
+            assertTrue(raw.has("definitions"), "schema must declare definitions");
+        }
+    }
+
+    @Test
+    void extractedJsonValidatesAgainstSchema() throws Exception {
+        var json = extractAsJson(fixtureJar);
+        var node = objectMapper.readTree(json);
+
+        Set<ValidationMessage> messages = schema.validate(node);
+        assertTrue(messages.isEmpty(),
+                () -> "Generated JSON failed schema validation:\n" + formatMessages(messages)
+                        + "\n\nJSON was:\n" + json);
+    }
+
+    @Test
+    void schemaRejectsKnownInvalidShape() throws Exception {
+        // Sanity check: confirm the validator actually catches violations. A library result
+        // missing the required `types` field must fail.
+        var bad = """
                 [
                   {
-                    "library": {
-                      "groupId": "com.example",
-                      "artifactId": "my-lib",
-                      "version": "1.0.0"
-                    },
-                    "types": [
-                      {
-                        "packageName": "com.example",
-                        "kind": "class",
-                        "name": "MyClass",
-                        "fullName": "com.example.MyClass",
-                        "modifiers": ["public"],
-                        "interfaces": [],
-                        "genericInterfaces": [],
-                        "typeParameters": [],
-                        "annotations": [
-                          {
-                            "type": "java.lang.Deprecated",
-                            "arguments": [
-                              {
-                                "name": "since",
-                                "value": {
-                                  "kind": "string",
-                                  "value": "2.0"
-                                }
-                              },
-                              {
-                                "name": "forRemoval",
-                                "value": {
-                                  "kind": "boolean",
-                                  "value": true
-                                }
-                              }
-                            ]
-                          }
-                        ],
-                        "constructors": [],
-                        "methods": [],
-                        "enumConstants": [],
-                        "fields": []
-                      }
-                    ]
+                    "library": {"groupId": "g", "artifactId": "a", "version": "1"}
                   }
                 ]
                 """;
-        JsonNode node = objectMapper.readTree(json);
-        JsonNode annotation = node.get(0).get("types").get(0).get("annotations").get(0);
-        assertEquals("java.lang.Deprecated", annotation.get("type").asText());
-        assertEquals(2, annotation.get("arguments").size());
+        var node = objectMapper.readTree(bad);
+        Set<ValidationMessage> messages = schema.validate(node);
+        assertTrue(!messages.isEmpty(), "validator should flag missing required field 'types'");
+    }
 
-        JsonNode sinceArg = annotation.get("arguments").get(0);
-        assertEquals("since", sinceArg.get("name").asText());
-        assertEquals("string", sinceArg.get("value").get("kind").asText());
-        assertEquals("2.0", sinceArg.get("value").get("value").asText());
+    private static String extractAsJson(Path jar) throws Exception {
+        var fileName = jar.getFileName().toString();
+        var artifactId = fileName.substring(0, fileName.length() - "-0.jar".length());
+        var context = new ExtractContext(
+                jar.getParent().toString(),
+                new String[]{"g:" + artifactId + ":0"},
+                false, null, new String[0]);
+        var library = context.getLibraries()[0];
+        var types = RevapiReflector.reflectOverJar(context, library, new ArrayList<>());
+        var libraries = List.of(new LibraryResult(library, types));
+        return JsonSerializer.serialize(libraries);
+    }
+
+    private static String formatMessages(Set<ValidationMessage> messages) {
+        return messages.stream()
+                .map(ValidationMessage::toString)
+                .reduce((a, b) -> a + "\n" + b)
+                .orElse("");
+    }
+
+    private static JavaFileObject source(String fqcn, String body) {
+        return new SimpleJavaFileObject(
+                URI.create("string:///" + fqcn.replace('.', '/') + ".java"),
+                JavaFileObject.Kind.SOURCE) {
+            @Override public CharSequence getCharContent(boolean ignoreEncodingErrors) {
+                return body;
+            }
+        };
+    }
+
+    private static void compile(List<JavaFileObject> sources, Path outDir) {
+        JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
+        assertNotNull(compiler, "no system javac — tests must run on a JDK");
+        var options = List.of("-d", outDir.toString());
+        var task = compiler.getTask(null, null, null, options, null, sources);
+        assertTrue(task.call(), "javac compilation of test sources failed");
+    }
+
+    private static void packageJar(Path classesDir, Path jar) throws Exception {
+        try (var out = new JarOutputStream(Files.newOutputStream(jar))) {
+            try (Stream<Path> walk = Files.walk(classesDir)) {
+                for (Path p : (Iterable<Path>) walk::iterator) {
+                    if (Files.isDirectory(p)) {
+                        continue;
+                    }
+                    var rel = classesDir.relativize(p).toString().replace('\\', '/');
+                    out.putNextEntry(new JarEntry(rel));
+                    Files.copy(p, out);
+                    out.closeEntry();
+                }
+            }
+        }
     }
 }
