@@ -1,6 +1,5 @@
 package io.github.paulirwin.javaapiextractor;
 
-import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -8,10 +7,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Integration tests — require network access to Maven Central.
- * Run with: {@code mvn -Pintegration-tests test}
+ * Run with {@code mvn verify}; failsafe picks these up by the {@code *IT} suffix.
  */
-@Tag("integration")
-class ExtractRunnerTest {
+class ExtractRunnerIT {
 
     private static final String[] LUCENE_4_8_1_LIBS = {
             "org.apache.lucene:lucene-core:4.8.1",

@@ -9,7 +9,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * Unit tests for the Revapi-based reflector. The full extraction path requires a JDK
  * (not just a JRE) at runtime because Revapi drives {@code javac}; that path is exercised
- * by the integration tests in {@link ExtractRunnerTest}. This file covers helpers that
+ * by the integration tests in {@link ExtractRunnerIT}. This file covers helpers that
  * don't need a live javac environment.
  */
 class RevapiReflectorTest {

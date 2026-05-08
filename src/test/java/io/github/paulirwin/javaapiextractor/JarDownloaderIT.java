@@ -15,10 +15,10 @@ import java.util.concurrent.atomic.AtomicInteger;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Unit tests for JarDownloader that stand up an in-process HTTP server pretending to be
+ * Tests for JarDownloader that stand up an in-process HTTP server pretending to be
  * Maven Central. Swaps JarDownloader.MAVEN_CENTRAL for the duration of each test.
  */
-class JarDownloaderTest {
+class JarDownloaderIT {
 
     private HttpServer server;
     private String originalMavenCentral;
