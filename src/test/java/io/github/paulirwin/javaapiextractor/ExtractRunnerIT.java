@@ -10,6 +10,7 @@ import org.junit.jupiter.api.Test;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -114,5 +115,98 @@ class ExtractRunnerIT {
                                 .map(ValidationMessage::toString)
                                 .reduce((a, b) -> a + "\n" + b)
                                 .orElse(""));
+    }
+
+    /**
+     * End-to-end: the extracted Lucene JSON must contain Javadoc populated from the
+     * {@code -sources.jar}. Without the sources-jar overlay, every javadoc field is null
+     * because Revapi only feeds the binary jar to javac and bytecode doesn't carry
+     * Javadoc — this test exists to catch a regression that would silently empty out
+     * the documentation for every consumer.
+     * <p>
+     * Assertions are anchored on stable Lucene 4.8.1 declarations and on aggregate
+     * coverage thresholds picked well below the actual numbers (~616/2308/683) so that
+     * minor Lucene-Javadoc edits don't cause flakes.
+     */
+    @Test
+    void extractedLuceneIncludesJavadoc() throws Exception {
+        var context = new ExtractContext("download", LUCENE_4_8_1_LIBS, false, null, new String[0]);
+        var libraries = RevapiReflector.reflectOverJars(context);
+
+        // Find the lucene-core LibraryResult — order is sorted by coordinates, so it's not
+        // necessarily index 0. (lucene-analyzers-common shares the same group/version.)
+        LibraryResult core = libraries.stream()
+                .filter(l -> "lucene-core".equals(l.library().artifactId()))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("lucene-core not in extraction output"));
+
+        // 1) Type-level Javadoc: LucenePackage is a tiny, stable class whose Javadoc is
+        //    just the class description — easy to assert without binding to specific
+        //    wording that might shift across patch releases.
+        TypeMetadata lucenePackage = findType(core, "org.apache.lucene.LucenePackage");
+        assertNotNull(lucenePackage.javadoc(), "LucenePackage should have type-level Javadoc");
+        assertNotNull(lucenePackage.javadoc().description());
+        assertTrue(lucenePackage.javadoc().description().toLowerCase().contains("package"),
+                () -> "LucenePackage description should mention 'package', got: "
+                        + lucenePackage.javadoc().description());
+
+        // 2) Method Javadoc with @param + @return: Analyzer.createComponents(String, Reader)
+        //    is a stable abstract API on Lucene's Analyzer with three documented elements.
+        TypeMetadata analyzer = findType(core, "org.apache.lucene.analysis.Analyzer");
+        MethodMetadata createComponents = analyzer.methods().stream()
+                .filter(m -> "createComponents".equals(m.name()) && m.parameters().size() == 2)
+                .findFirst()
+                .orElseThrow(() -> new AssertionError(
+                        "Analyzer.createComponents(String, Reader) not found"));
+
+        assertNotNull(createComponents.javadoc(), "createComponents should have Javadoc");
+        assertNotNull(createComponents.javadoc().description());
+        assertNotNull(createComponents.javadoc().tags());
+        assertTrue(createComponents.javadoc().tags().containsKey("param"),
+                "createComponents should have @param tags");
+        assertTrue(createComponents.javadoc().tags().containsKey("return"),
+                "createComponents should have an @return tag");
+
+        // 3) Parameter-level Javadoc: per-parameter docs must flow even though Lucene's
+        //    binary jar doesn't preserve source parameter names (so the JSON shows them
+        //    as arg0/arg1). The positional lookup is what makes this work — regression
+        //    here would silently drop @param content.
+        ParameterMetadata firstParam = createComponents.parameters().get(0);
+        assertNotNull(firstParam.javadoc(),
+                "First parameter of createComponents should have Javadoc from the @param tag");
+        assertNotNull(firstParam.javadoc().description());
+        assertFalse(firstParam.javadoc().description().isBlank(),
+                "First parameter Javadoc should be non-blank");
+
+        // 4) Aggregate coverage: thresholds intentionally well below observed values
+        //    (616 types / 2308 methods / 683 params) so unrelated Javadoc edits don't
+        //    flake the test, but high enough to catch a wholesale regression where the
+        //    sources-jar parsing breaks and every value falls back to null.
+        long typesWithDoc = core.types().stream()
+                .filter(t -> t.javadoc() != null)
+                .count();
+        long methodsWithDoc = core.types().stream()
+                .flatMap(t -> t.methods().stream())
+                .filter(m -> m.javadoc() != null)
+                .count();
+        long paramsWithDoc = core.types().stream()
+                .flatMap(t -> t.methods().stream())
+                .flatMap(m -> m.parameters().stream())
+                .filter(p -> p.javadoc() != null)
+                .count();
+        assertTrue(typesWithDoc > 300,
+                () -> "Expected >300 types with Javadoc, got " + typesWithDoc);
+        assertTrue(methodsWithDoc > 1000,
+                () -> "Expected >1000 methods with Javadoc, got " + methodsWithDoc);
+        assertTrue(paramsWithDoc > 300,
+                () -> "Expected >300 parameters with Javadoc, got " + paramsWithDoc);
+    }
+
+    private static TypeMetadata findType(LibraryResult lib, String fullName) {
+        return lib.types().stream()
+                .filter(t -> fullName.equals(t.fullName()))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError(
+                        "Type not found in extraction output: " + fullName));
     }
 }
