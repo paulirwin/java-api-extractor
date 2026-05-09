@@ -37,6 +37,10 @@ class RevapiReflectorFieldConstantsTest {
 
     @BeforeAll
     static void compileAndPackage() throws Exception {
+        // Synthetic test fixtures use bogus Maven coords like "g:constants:0" that don't
+        // exist on Maven Central. Skip the -sources.jar fetch so we don't make real HTTP
+        // calls (and 404s) for every fixture run.
+        JarDownloader.skipSourcesFetch = true;
         var sources = List.of(
                 source("c.Constants", """
                         package c;

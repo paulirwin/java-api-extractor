@@ -39,6 +39,14 @@
             <artifactId>revapi-java-spi</artifactId>
             <version>0.25.1</version>
         </dependency>
+        <!-- JavaParser is used to extract Javadoc from -sources.jar files. Revapi only
+             feeds the binary jar to javac, so Elements.getDocComment() returns null;
+             instead we parse the source jar separately and overlay the Javadoc. -->
+        <dependency>
+            <groupId>com.github.javaparser</groupId>
+            <artifactId>javaparser-core</artifactId>
+            <version>3.26.4</version>
+        </dependency>
         <dependency>
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter</artifactId>

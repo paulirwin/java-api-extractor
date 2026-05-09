@@ -10,7 +10,6 @@ import org.revapi.java.JavaApiAnalyzer;
 import org.revapi.java.JavaArchiveAnalyzer;
 
 import javax.lang.model.element.AnnotationMirror;
-import javax.lang.model.element.Element;
 import javax.lang.model.element.ElementKind;
 import javax.lang.model.element.ExecutableElement;
 import javax.lang.model.element.Modifier;
@@ -30,13 +29,10 @@ import javax.lang.model.util.Elements;
 import javax.lang.model.util.Types;
 import java.util.ArrayList;
 import java.util.Enumeration;
-import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 
@@ -59,7 +55,13 @@ public class RevapiReflector {
      * {@code stableParameterNames} flag so they can be threaded through the reflector
      * with one argument.
      */
-    record Env(Elements elements, Types types, boolean stableParameterNames) {}
+    record Env(Elements elements, Types types, boolean stableParameterNames,
+               JavadocSourceParser javadocs) {
+        /** Convenience for tests / fixtures that don't care about Javadoc. */
+        Env(Elements elements, Types types, boolean stableParameterNames) {
+            this(elements, types, stableParameterNames, JavadocSourceParser.fromSourcesJar(null));
+        }
+    }
 
     public static List<LibraryResult> reflectOverJars(ExtractContext context) throws Exception {
         var libraries = context.getLibraries();
@@ -91,6 +93,12 @@ public class RevapiReflector {
                                              List<Archive> supplementary) throws Exception {
         System.err.println("Reflecting over jar: " + library.getJarName());
 
+        // Best-effort fetch + parse the sources jar so we can overlay Javadoc onto the
+        // metadata. Revapi only feeds the binary jar to javac and javac doesn't carry
+        // Javadoc, so without this step every javadoc field would be null.
+        var sourcesFile = JarDownloader.downloadSourcesJar(context, library, context.isForce());
+        var javadocs = JavadocSourceParser.fromSourcesJar(sourcesFile);
+
         var primaryFile = library.getFullJarPath(context);
         var primary = new FileArchive(primaryFile);
 
@@ -116,7 +124,7 @@ public class RevapiReflector {
             forest.getRoots(); // force compilation
             var probing = archiveAnalyzer.getProbingEnvironment();
             var env = new Env(probing.getElementUtils(), probing.getTypeUtils(),
-                    context.isStableParameterNames());
+                    context.isStableParameterNames(), javadocs);
 
             var types = new ArrayList<TypeMetadata>();
             for (String canonicalName : enumerateTypeNames(primaryFile)) {
@@ -245,7 +253,7 @@ public class RevapiReflector {
                 extractMethods(type, env),
                 extractEnumConstants(type, env),
                 extractFields(type, env),
-                extractJavadoc(type, env)
+                extractJavadocByKey(JavadocSourceParser.typeKey(fullName), env)
         );
     }
 
@@ -259,69 +267,47 @@ public class RevapiReflector {
         };
     }
 
-    private static JavadocMetadata extractJavadoc(Element element, Env env) {
-        String rawDoc = env.elements().getDocComment(element);
-        if (rawDoc == null || rawDoc.isBlank()) {
+    /**
+     * Looks up Javadoc for the element identified by {@code key} in the
+     * {@linkplain Env#javadocs() source-jar parser} and renders it as a
+     * {@link JavadocMetadata}. Returns {@code null} if no Javadoc was indexed for that
+     * key — either because the sources jar wasn't published, the parser couldn't read
+     * the file, or the declaration genuinely has no Javadoc.
+     */
+    private static JavadocMetadata extractJavadocByKey(String key, Env env) {
+        var entry = env.javadocs().lookup(key);
+        if (entry == null) {
             return null;
         }
-        String cleanedDoc = cleanJavadoc(rawDoc);
-        String description = extractDescription(cleanedDoc);
-        Map<String, String> tags = extractTags(cleanedDoc);
-        if (description.isBlank() && tags.isEmpty()) {
+        if (entry.description() == null && (entry.tags() == null || entry.tags().isEmpty())) {
             return null;
         }
-        return new JavadocMetadata(
-                description.isBlank() ? null : description,
-                tags.isEmpty() ? null : tags,
-                rawDoc
-        );
+        return new JavadocMetadata(entry.description(), entry.tags(), entry.rawText());
     }
 
-    private static String cleanJavadoc(String rawDoc) {
-        var lines = rawDoc.split("\n");
-        var cleaned = new ArrayList<String>();
-        for (var line : lines) {
-            line = line.replaceAll("^\\s*\\*", "").trim();
-            if (!line.isEmpty() || !cleaned.isEmpty()) {
-                cleaned.add(line);
-            }
+    /**
+     * Builds the parameter-types segment of a method/constructor lookup key by reducing
+     * each declared parameter type to its simple-name suffix. {@link JavadocSourceParser}
+     * indexes sources the same way (since it can't fully resolve imports without a
+     * symbol table), so both sides agree.
+     */
+    private static List<String> simpleParamTypes(ExecutableElement executable, Env env) {
+        var result = new ArrayList<String>(executable.getParameters().size());
+        var params = executable.getParameters();
+        for (int i = 0; i < params.size(); i++) {
+            var p = params.get(i);
+            var typeName = typeNameOf(p.asType(), false, env);
+            // Varargs in source declares as `T...`, which the parser indexes as `T[]`.
+            // The element model surfaces the trailing parameter as an array type already,
+            // so typeNameOf ends with `[]` — matches without extra work.
+            result.add(JavadocSourceParser.simpleTypeName(typeName));
         }
-        while (!cleaned.isEmpty() && cleaned.get(cleaned.size() - 1).isEmpty()) {
-            cleaned.remove(cleaned.size() - 1);
-        }
-        return String.join("\n", cleaned).trim();
-    }
-
-    private static String extractDescription(String cleanedDoc) {
-        int tagIndex = cleanedDoc.indexOf("@");
-        if (tagIndex == -1) {
-            return cleanedDoc;
-        }
-        return cleanedDoc.substring(0, tagIndex).trim();
-    }
-
-    private static Map<String, String> extractTags(String cleanedDoc) {
-        var tags = new HashMap<String, String>();
-        var tagPattern = Pattern.compile("@(\\w+)\\s+([^@]*)(?=@|$)", Pattern.DOTALL);
-        var matcher = tagPattern.matcher(cleanedDoc);
-        while (matcher.find()) {
-            String tagName = matcher.group(1);
-            String tagContent = matcher.group(2).trim();
-            if (!tagContent.isEmpty()) {
-                tagContent = tagContent.replaceAll("\\s+", " ");
-                String existing = tags.get(tagName);
-                if (existing != null) {
-                    tags.put(tagName, existing + " | " + tagContent);
-                } else {
-                    tags.put(tagName, tagContent);
-                }
-            }
-        }
-        return tags;
+        return result;
     }
 
     static List<ConstructorMetadata> extractConstructors(TypeElement type, Env env) {
         var result = new ArrayList<ConstructorMetadata>();
+        var typeFqn = binaryName(type, env);
         // Non-static inner classes have a synthetic enclosing-instance parameter (`this$0`)
         // that reflection surfaces as a real first parameter on every constructor.
         // javac's element model hides it; reintroduce it so the JSON matches reflection.
@@ -372,7 +358,9 @@ public class RevapiReflector {
                     getThrowsTypes(ctor, env),
                     getAnnotations(ctor.getAnnotationMirrors(), env),
                     ctor.isVarArgs(),
-                    extractJavadoc(ctor, env)
+                    extractJavadocByKey(
+                            JavadocSourceParser.constructorKey(typeFqn, simpleParamTypes(ctor, env)),
+                            env)
             ));
         }
         result.sort(ConstructorMetadata::compareTo);
@@ -381,6 +369,7 @@ public class RevapiReflector {
 
     static List<MethodMetadata> extractMethods(TypeElement type, Env env) {
         var result = new ArrayList<MethodMetadata>();
+        var typeFqn = binaryName(type, env);
         for (var member : type.getEnclosedElements()) {
             if (member.getKind() != ElementKind.METHOD) {
                 continue;
@@ -405,7 +394,11 @@ public class RevapiReflector {
                     getThrowsTypes(method, env),
                     getAnnotations(method.getAnnotationMirrors(), env),
                     method.isVarArgs(),
-                    extractJavadoc(method, env)
+                    extractJavadocByKey(
+                            JavadocSourceParser.methodKey(typeFqn,
+                                    method.getSimpleName().toString(),
+                                    simpleParamTypes(method, env)),
+                            env)
             ));
         }
         result.sort(MethodMetadata::compareTo);
@@ -414,6 +407,7 @@ public class RevapiReflector {
 
     static List<FieldMetadata> extractFields(TypeElement type, Env env) {
         var result = new ArrayList<FieldMetadata>();
+        var typeFqn = binaryName(type, env);
         for (var member : type.getEnclosedElements()) {
             if (member.getKind() != ElementKind.FIELD) {
                 continue;
@@ -423,15 +417,16 @@ public class RevapiReflector {
                 continue;
             }
             var fieldType = field.asType();
+            var fieldName = field.getSimpleName().toString();
             result.add(new FieldMetadata(
-                    field.getSimpleName().toString(),
+                    fieldName,
                     typeNameOf(fieldType, false, env),
                     typeNameOf(fieldType, true, env),
                     sorted(getModifiers(field.getModifiers(), null)),
                     getAnnotations(field.getAnnotationMirrors(), env),
                     field.getModifiers().contains(Modifier.STATIC),
                     constantValueOf(field),
-                    extractJavadoc(field, env)
+                    extractJavadocByKey(JavadocSourceParser.fieldKey(typeFqn, fieldName), env)
             ));
         }
         result.sort(FieldMetadata::compareTo);
@@ -448,16 +443,18 @@ public class RevapiReflector {
             return List.of();
         }
         var result = new ArrayList<EnumConstantMetadata>();
+        var typeFqn = binaryName(type, env);
         for (var member : type.getEnclosedElements()) {
             if (member.getKind() != ElementKind.ENUM_CONSTANT) {
                 continue;
             }
             var constant = (VariableElement) member;
+            var constantName = constant.getSimpleName().toString();
             // Enum constants are implicitly public — no isApiVisible filter needed.
             result.add(new EnumConstantMetadata(
-                    constant.getSimpleName().toString(),
+                    constantName,
                     getAnnotations(constant.getAnnotationMirrors(), env),
-                    extractJavadoc(constant, env)));
+                    extractJavadocByKey(JavadocSourceParser.enumConstantKey(typeFqn, constantName), env)));
         }
         return result;
     }
@@ -500,8 +497,12 @@ public class RevapiReflector {
     private static List<ParameterMetadata> buildParameters(ExecutableElement executable, Env env) {
         var params = executable.getParameters();
         var result = new ArrayList<ParameterMetadata>(params.size());
-        JavadocMetadata executableJavadoc = extractJavadoc(executable, env);
-        Map<String, String> paramDocs = extractParamDocsFromJavadoc(executableJavadoc);
+
+        // Look up @param docs positionally — works regardless of whether the binary jar
+        // preserved source parameter names. (Without -parameters/debug info, javac
+        // surfaces them as arg0/arg1/…, which won't match the source-side names.)
+        List<String> paramDocs = lookupParamDocs(executable, env);
+
         for (int i = 0; i < params.size(); i++) {
             var p = params.get(i);
             // In stable mode (used by `hash`), emit arg{i} so the digest doesn't shift
@@ -510,9 +511,11 @@ public class RevapiReflector {
             // its own arg{i} fallback).
             String name = env.stableParameterNames() ? "arg" + i : p.getSimpleName().toString();
             JavadocMetadata paramJavadoc = null;
-            String paramDocText = paramDocs.get(name);
-            if (paramDocText != null && !paramDocText.isBlank()) {
-                paramJavadoc = new JavadocMetadata(paramDocText, Map.of(), null);
+            if (i < paramDocs.size()) {
+                String paramDocText = paramDocs.get(i);
+                if (paramDocText != null && !paramDocText.isBlank()) {
+                    paramJavadoc = new JavadocMetadata(paramDocText, Map.of(), null);
+                }
             }
             result.add(new ParameterMetadata(
                     name,
@@ -525,25 +528,18 @@ public class RevapiReflector {
         return result;
     }
 
-    private static Map<String, String> extractParamDocsFromJavadoc(JavadocMetadata javadoc) {
-        var paramDocs = new HashMap<String, String>();
-        if (javadoc != null && javadoc.tags() != null) {
-            String paramTagValue = javadoc.tags().get("param");
-            if (paramTagValue != null) {
-                var paramPattern = Pattern.compile("(\\w+)\\s+(.*)");
-                var parts = paramTagValue.split("\\|");
-                for (var part : parts) {
-                    part = part.trim();
-                    var matcher = paramPattern.matcher(part);
-                    if (matcher.find()) {
-                        String paramName = matcher.group(1);
-                        String paramDesc = matcher.group(2);
-                        paramDocs.put(paramName, paramDesc);
-                    }
-                }
-            }
+    private static List<String> lookupParamDocs(ExecutableElement executable, Env env) {
+        var enclosing = executable.getEnclosingElement();
+        if (!(enclosing instanceof TypeElement typeElement)) {
+            return List.of();
         }
-        return paramDocs;
+        var typeFqn = binaryName(typeElement, env);
+        var paramTypes = simpleParamTypes(executable, env);
+        String key = executable.getKind() == ElementKind.CONSTRUCTOR
+                ? JavadocSourceParser.constructorKey(typeFqn, paramTypes)
+                : JavadocSourceParser.methodKey(typeFqn, executable.getSimpleName().toString(), paramTypes);
+        var entry = env.javadocs().lookup(key);
+        return entry == null ? List.of() : entry.paramDocs();
     }
 
     private static List<String> getThrowsTypes(ExecutableElement executable, Env env) {
