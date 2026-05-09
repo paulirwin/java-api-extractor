@@ -87,6 +87,13 @@ class ExtractRunnerIT {
     void extractedICU4jJsonValidatesAgainstSchema() throws Exception {
         var context = new ExtractContext("download", ICU4J_60_1_LIBS, false, null, new String[0]);
 
+        // Ensure the jar is on disk before Revapi tries to read it. The Lucene tests
+        // above happen to download via getHash() first, which leaves the jar cached for
+        // the schema-validation test that follows; this test has no such predecessor.
+        for (var library : context.getLibraries()) {
+            JarDownloader.downloadMavenDependency(context, library, context.isForce());
+        }
+
         var libraries = RevapiReflector.reflectOverJars(context);
         var json = JsonSerializer.serialize(libraries);
 
