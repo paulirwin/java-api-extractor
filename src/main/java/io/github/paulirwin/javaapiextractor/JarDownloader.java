@@ -44,6 +44,83 @@ public class JarDownloader {
         System.err.printf("Downloaded %s (%d bytes)%n", jarFile.getAbsolutePath(), jarFile.length());
     }
 
+    /**
+     * When true, {@link #downloadSourcesJar} returns {@code null} immediately without
+     * touching the network. Tests with synthetic Maven coordinates use this to avoid
+     * hitting real Maven Central with bogus group IDs.
+     */
+    static volatile boolean skipSourcesFetch = false;
+
+    /**
+     * Best-effort fetch of the {@code -sources.jar} sidecar from Maven Central. Used to
+     * reconstruct Javadoc from {@code .java} files (the binary jar doesn't carry it). A
+     * 404 returns {@code null} with a warning — not every artifact publishes sources.
+     *
+     * @return the local sources jar, or {@code null} if Maven Central doesn't have one
+     *         or the {@link #skipSourcesFetch} switch is on
+     */
+    public static File downloadSourcesJar(ExtractContext context, MavenCoordinates dependency, boolean force) {
+        if (skipSourcesFetch) {
+            return null;
+        }
+        var downloadDir = new File(context.getDownloadsDir());
+        if (!downloadDir.exists() && !downloadDir.mkdirs()) {
+            throw new RuntimeException("Failed to create download directory: " + downloadDir.getAbsolutePath());
+        }
+
+        var sourcesJarName = "%s-%s-sources.jar".formatted(dependency.artifactId(), dependency.version());
+        var sourcesJarFile = new File(downloadDir, sourcesJarName);
+        // Treat an empty stale file as "no sources jar" — earlier 404 cleanup may have
+        // failed (e.g. on Windows the file handle from HttpResponse.BodyHandlers.ofFile
+        // can linger), and we don't want to feed a zero-byte file to the parser.
+        if (sourcesJarFile.exists() && sourcesJarFile.length() == 0) {
+            sourcesJarFile.delete();
+        }
+        if (sourcesJarFile.exists() && !force) {
+            System.err.printf("File %s already exists. Skipping download.%n", sourcesJarName);
+            return sourcesJarFile;
+        }
+
+        var sourcesUrl = mavenUrl(dependency, sourcesJarName);
+        System.err.printf("Downloading %s%n", sourcesUrl);
+
+        try {
+            var request = HttpRequest.newBuilder(URI.create(sourcesUrl))
+                    .timeout(REQUEST_TIMEOUT)
+                    .GET()
+                    .build();
+            var response = client().send(request, HttpResponse.BodyHandlers.ofFile(sourcesJarFile.toPath()));
+            if (response.statusCode() == 404) {
+                // No sources jar published — common for in-house artifacts. Don't fail
+                // the whole extract; Javadoc just won't be available for this library.
+                System.err.printf("No -sources.jar published for %s; Javadoc will be unavailable.%n",
+                        dependency.getJarName());
+                // ofFile created an empty file even on 404; clean it up so the next run
+                // doesn't hit the "already exists" branch with a zero-byte file.
+                if (sourcesJarFile.exists()) {
+                    sourcesJarFile.delete();
+                }
+                return null;
+            }
+            if (response.statusCode() != 200) {
+                throw new IOException("HTTP " + response.statusCode() + " for " + sourcesUrl);
+            }
+        } catch (IOException e) {
+            System.err.printf("Failed to fetch sources jar for %s: %s; Javadoc will be unavailable.%n",
+                    dependency.getJarName(), e.getMessage());
+            if (sourcesJarFile.exists() && sourcesJarFile.length() == 0) {
+                sourcesJarFile.delete();
+            }
+            return null;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new RuntimeException("Interrupted while downloading " + sourcesUrl, e);
+        }
+
+        System.err.printf("Downloaded %s (%d bytes)%n", sourcesJarFile.getAbsolutePath(), sourcesJarFile.length());
+        return sourcesJarFile;
+    }
+
     private static String mavenUrl(MavenCoordinates coords, String fileName) {
         var groupPath = coords.groupId().replace(".", "/");
         return "%s/%s/%s/%s/%s".formatted(MAVEN_CENTRAL, groupPath, coords.artifactId(), coords.version(), fileName);

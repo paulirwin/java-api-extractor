@@ -42,6 +42,8 @@ class JsonSchemaValidationTest {
 
     @BeforeAll
     static void setUp() throws Exception {
+        // Synthetic test fixture: don't try to fetch a -sources.jar from real Maven Central.
+        JarDownloader.skipSourcesFetch = true;
         objectMapper = new ObjectMapper();
         var factory = JsonSchemaFactory.getInstance(SpecVersion.VersionFlag.V7);
         try (var schemaStream = JsonSchemaValidationTest.class.getResourceAsStream("/api-schema.json")) {

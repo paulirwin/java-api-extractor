@@ -18,7 +18,8 @@ public record TypeMetadata(
         List<ConstructorMetadata> constructors,
         List<MethodMetadata> methods,
         List<EnumConstantMetadata> enumConstants,
-        List<FieldMetadata> fields) implements Comparable<TypeMetadata> {
+        List<FieldMetadata> fields,
+        JavadocMetadata javadoc) implements Comparable<TypeMetadata> {
     public TypeMetadata {
         interfaces = List.copyOf(interfaces);
         genericInterfaces = List.copyOf(genericInterfaces);

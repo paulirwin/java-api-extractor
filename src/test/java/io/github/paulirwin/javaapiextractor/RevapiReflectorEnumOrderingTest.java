@@ -34,6 +34,8 @@ class RevapiReflectorEnumOrderingTest {
 
     @BeforeAll
     static void compileAndPackage() throws Exception {
+        // Synthetic test fixture: don't try to fetch a -sources.jar from real Maven Central.
+        JarDownloader.skipSourcesFetch = true;
         // Source order is intentionally non-alphabetical so the test would fail under
         // the previous "sort all fields alphabetically" behavior.
         var sources = List.of(

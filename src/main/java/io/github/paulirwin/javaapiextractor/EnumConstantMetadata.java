@@ -8,7 +8,8 @@ import java.util.List;
  * so this record is intentionally not {@link Comparable}.
  */
 public record EnumConstantMetadata(String name,
-                                   List<AnnotationMetadata> annotations) {
+                                   List<AnnotationMetadata> annotations,
+                                   JavadocMetadata javadoc) {
     public EnumConstantMetadata {
         annotations = List.copyOf(annotations);
     }

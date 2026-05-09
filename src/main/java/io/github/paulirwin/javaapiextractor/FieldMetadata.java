@@ -8,7 +8,8 @@ public record FieldMetadata(String name,
                             List<String> modifiers,
                             List<AnnotationMetadata> annotations,
                             boolean isStatic,
-                            ConstantValue constantValue) implements Comparable<FieldMetadata> {
+                            ConstantValue constantValue,
+                            JavadocMetadata javadoc) implements Comparable<FieldMetadata> {
     public FieldMetadata {
         modifiers = List.copyOf(modifiers);
         annotations = List.copyOf(annotations);

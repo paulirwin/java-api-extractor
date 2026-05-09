@@ -34,6 +34,8 @@ class RevapiReflectorAnnotationArgumentsTest {
 
     @BeforeAll
     static void compileAndPackage() throws Exception {
+        // Synthetic test fixture: don't try to fetch a -sources.jar from real Maven Central.
+        JarDownloader.skipSourcesFetch = true;
         var sources = List.of(
                 source("p.Color", """
                         package p;

@@ -10,7 +10,8 @@ public record MethodMetadata(String name,
                              List<String> typeParameters,
                              List<String> throwsTypes,
                              List<AnnotationMetadata> annotations,
-                             boolean isVarArgs) implements Comparable<MethodMetadata> {
+                             boolean isVarArgs,
+                             JavadocMetadata javadoc) implements Comparable<MethodMetadata> {
     public MethodMetadata {
         parameters = List.copyOf(parameters);
         modifiers = List.copyOf(modifiers);
